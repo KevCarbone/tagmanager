@@ -16,7 +16,7 @@
  * ========================================================== */
 (function($) {
 
-    "use strict";
+    // "use strict";
 
     var defaults = {
         prefilled: null,
@@ -35,11 +35,10 @@
         output: null,
         deleteTagsOnBackspace: true,    // deprecated
         tagsContainer: null,
-        tagCloseIcon: 'x',
+        tagCloseIcon: 'X',
         tagClass: '',
         validator: null,
-        onlyTagList: false,
-        tagList: null,
+        onlyTagList: false
     },
 
     publicMethods = {
@@ -48,34 +47,14 @@
             tlis = $self.data("tlis"), tlid = $self.data("tlid"), idx, newTagId, newTagRemoveId, escaped,
             html, $el, lastTagId, lastTagObj;
 
-            tag = privateMethods.trimTag(tag, opts.delimiterChars);
 
-            if (!tag || tag.length <= 0) { return; }
+            tag.name = privateMethods.trimTag(tag.name, opts.delimiterChars);
 
-            // check if restricted only to the tagList suggestions
-            if (opts.onlyTagList && undefined !== opts.tagList ){
+            if (!tag || !tag.name|| tag.name.length <= 0) { return; }
 
-                //if the list has been updated by look pushed tag in the tagList. if not found return
-                if (opts.tagList){
-                    var $tagList = opts.tagList;
-
-                    // change each array item to lower case
-                    $.each($tagList, function(index, item) {
-                        $tagList[index] = item.toLowerCase();
-                    });
-                    var suggestion = $.inArray(tag.toLowerCase(), $tagList);
-
-                    if ( -1 === suggestion ) {
-                        //console.log("tag:" + tag + " not in tagList, not adding it");
-                        return;
-                    } 
-                }
-
-            }
-
-            if (opts.CapitalizeFirstLetter && tag.length > 1) {
-                tag = tag.charAt(0).toUpperCase() + tag.slice(1).toLowerCase();
-            }
+            // if (opts.CapitalizeFirstLetter && tag.name.length > 1) {
+            //     tag.name = tag.name.charAt(0).toUpperCase() + tag.name.slice(1).toLowerCase();
+            // }
 
             // call the validator (if any) and do not let the tag pass if invalid
             if (opts.validator && !opts.validator(tag)) { return; }
@@ -86,18 +65,19 @@
             alreadyInList = false;
             //use jQuery.map to make this work in IE8 (pure JS map is JS 1.6 but IE8 only supports JS 1.5)
             tlisLowerCase = jQuery.map(tlis, function(elem) {
-                return elem.toLowerCase();
+                return elem._id.$oid.toLowerCase();
             });
+            
+            
+            // tlisLowerCase = tlis;
 
-            idx = $.inArray(tag.toLowerCase(), tlisLowerCase);
-
+            idx = $.inArray(tag._id.$oid.toLowerCase(), tlisLowerCase);
             if (-1 !== idx) {
                 // console.log("tag:" + tag + " !!already in list!!");
                 alreadyInList = true;
             }
 
             if (alreadyInList) {
-                $self.trigger('tm:duplicated', tag);
                 $("#" + $self.data("tm_rndid") + "_" + tlid[idx]).stop()
                     .animate({backgroundColor: opts.blinkBGColor_1}, 100)
                     .animate({backgroundColor: opts.blinkBGColor_2}, 100)
@@ -116,47 +96,60 @@
                 tlid.push(tagId);
 
                 if (!ignoreEvents)
-                    if (opts.AjaxPush !== null && opts.AjaxPushAllTags == null) {
+                    if (opts.AjaxPush !== null) {
                         if ($.inArray(tag, opts.prefilled) === -1) {
                             $.post(opts.AjaxPush, $.extend({tag: tag}, opts.AjaxPushParameters));
                         }
                     }
-
+                var url ="";
                 // console.log("tagList: " + tlis);
+                if(tag._cls == "Tag.User"){
+                    url = "\"/#/user/"+tag._id.$oid+"\"";
+                }
+                else{
+                    url = "\"/#/tag/"+tag._id.$oid+"\"";
+                }
 
+                var linkTag = "<a class=\"tag-link\"href="+url+"> ";
+
+                
                 newTagId = $self.data("tm_rndid") + '_' + tagId;
                 newTagRemoveId = $self.data("tm_rndid") + '_Remover_' + tagId;
-                escaped = $("<span/>").text(tag).html();
-
-                html = '<span class="' + privateMethods.tagClasses.call($self) + '" id="' + newTagId + '">';
+                escaped = $("<span/>").text(tag.name).html();
+                html = linkTag;
+                html += '<span class="'+newTagId+" " + privateMethods.tagClasses.call($self,tag) + '" id="' + newTagId + '">';
                 html+= '<span>' + escaped + '</span>';
-                html+= '<a href="#" class="tm-tag-remove" id="' + newTagRemoveId + '" TagIdToRemove="' + tagId + '">';
-                html+= opts.tagCloseIcon + '</a></span> ';
+                html+= '<span class="tm-tag-remove '+newTagRemoveId+'" id="' + newTagRemoveId + '" TagIdToRemove="' + tagId + '">';
+                html+= opts.tagCloseIcon + '</span></span></a> ';
                 $el = $(html);
-
+               
                 if (opts.tagsContainer !== null) {
+                    $el.hide();
                     $(opts.tagsContainer).append($el);
+                    $el.show('slow',function(){
+                        $("." + newTagRemoveId).on("click", $self, function(e) {
+                            e.preventDefault();
+                            var TagIdToRemove = parseInt($(this).attr("TagIdToRemove"));
+                            privateMethods.spliceTag.call($self, TagIdToRemove, e.data);
+                        });
+
+                        privateMethods.refreshHiddenTagList.call($self);
+
+                        if (!ignoreEvents) { $self.trigger('tm:pushed', tag); }
+
+                        privateMethods.showOrHide.call($self);
+                    });
                 } else {
                     if (tagId > 1) {
                         lastTagId = tagId - 1;
-                        lastTagObj = $("#" + $self.data("tm_rndid") + "_" + lastTagId);
+                        lastTagObj = $("." + $self.data("tm_rndid") + "_" + lastTagId);
                         lastTagObj.after($el);
                     } else {
                         $self.before($el);
                     }
                 }
 
-                $el.find("#" + newTagRemoveId).on("click", $self, function(e) {
-                    e.preventDefault();
-                    var TagIdToRemove = parseInt($(this).attr("TagIdToRemove"));
-                    privateMethods.spliceTag.call($self, TagIdToRemove, e.data);
-                });
 
-                privateMethods.refreshHiddenTagList.call($self);
-
-                if (!ignoreEvents) { $self.trigger('tm:pushed', tag); }
-
-                privateMethods.showOrHide.call($self);
                 //if (tagManagerOptions.maxTags > 0 && tlis.length >= tagManagerOptions.maxTags) {
                 //  obj.hide();
                 //}
@@ -165,33 +158,36 @@
         },
 
         popTag : function () {
-            var $self = $(this), tagId, tagBeingRemoved,
-            tlis = $self.data("tlis"),
-            tlid = $self.data("tlid");
-
+        var $self = $(this), tlis = $self.data("tlis"), tlid = $self.data("tlid"),tagId,tagBeingRemoved;
+                            
+            
             if (tlid.length > 0) {
               tagId = tlid.pop();
 
               tagBeingRemoved = tlis[tlis.length - 1];
+
               $self.trigger('tm:popping', tagBeingRemoved);
               tlis.pop();
-
               // console.log("TagIdToRemove: " + tagId);
-              $("#" + $self.data("tm_rndid") + "_" + tagId).remove();
-              privateMethods.refreshHiddenTagList.call($self);
+              $("." + $self.data("tm_rndid") + "_" + tagId).hide(300,'swing', function(){
+                this.remove();
+                              privateMethods.refreshHiddenTagList.call($self);
               $self.trigger('tm:popped', tagBeingRemoved);
+              
+              });
+
               // console.log(tlis);
             }
         },
 
         empty : function() {
             var $self = $(this), tlis = $self.data("tlis"), tlid = $self.data("tlid"), tagId;
-
+            if(tlid){
             while (tlid.length > 0) {
                 tagId = tlid.pop();
                 tlis.pop();
                 // console.log("TagIdToRemove: " + tagId);
-                $("#" + $self.data("tm_rndid") + "_" + tagId).remove();
+                $("." + $self.data("tm_rndid") + "_" + tagId).remove();
                 privateMethods.refreshHiddenTagList.call($self);
                 // console.log(tlis);
             }
@@ -201,11 +197,24 @@
             //if (tagManagerOptions.maxTags > 0 && tlis.length < tagManagerOptions.maxTags) {
             //  obj.show();
             //}
+            }
         },
 
-        tags : function() {
-            var $self = this, tlis = $self.data("tlis");
-            return tlis;
+        getTag: function(tagid){
+            var $self = $(this), tlis = $self.data("tlis"), tlid = $self.data("tlid");
+
+            var tagId = parseInt(tagid.split($self.data("tm_rndid")+"_")[1]); 
+            if(!tagId){
+                return;
+            }
+            var idx = $.inArray(tagId, tlid);
+            return tlis[idx];
+
+            // if (tlid.length > 0) {
+            //               console.log(tlid);
+
+            //               // console.log(tlis);
+            // }
         }
     },
 
@@ -224,7 +233,8 @@
             }
         },
 
-        tagClasses : function () {
+        tagClasses : function (tag) {
+            
             var $self = $(this), opts = $self.data('opts'), tagBaseClass = opts.tagBaseClass,
             inputBaseClass = opts.inputBaseClass, cl;
             // 1) default class (tm-tag)
@@ -237,6 +247,14 @@
                     }
                 });
             }
+            if(tag._cls == "Tag.User"){
+                cl += " tm-tag-info";
+            }
+            else{
+                cl += " tm-tag-success";
+
+            }
+
             // 3) tags from tagClass option
             cl += (opts.tagClass ? ' ' + opts.tagClass : '');
             return cl;
@@ -288,10 +306,10 @@
         },
 
         pushAllTags : function (e, tag) {
-            var $self = $(this), opts = $self.data('opts'), tlis = $self.data("tlis");
+            var $self = this, opts = $self.data('opts'), tlis = $self.data("tlis");
             if (opts.AjaxPushAllTags) {
                 if (e.type !== 'tm:pushed' || $.inArray(tag, opts.prefilled) === -1) {
-                    $.post(opts.AjaxPush, $.extend({ tags: tlis.join(opts.baseDelimiter) }, opts.AjaxPushParameters));
+                    $.post(opts.AjaxPush, { tags: tlis.join(opts.baseDelimiter) });
                 }
             }
         },
@@ -300,21 +318,28 @@
             var $self = this, tlis = $self.data("tlis"), tlid = $self.data("tlid"), idx = $.inArray(tagId, tlid),
             tagBeingRemoved;
 
-            // console.log("TagIdToRemove: " + tagId);
-            // console.log("position: " + idx);
+
 
             if (-1 !== idx) {
-                tagBeingRemoved = tlis[idx];
-                $self.trigger('tm:splicing', tagBeingRemoved);
-                $("#" + $self.data("tm_rndid") + "_" + tagId).remove();
-                tlis.splice(idx, 1);
-                tlid.splice(idx, 1);
-                privateMethods.refreshHiddenTagList.call($self);
-                $self.trigger('tm:spliced', tagBeingRemoved);
+                // tagBeingRemoved = tlis[idx];
+                // $self.trigger('tm:splicing', tagBeingRemoved);
+                $("." + $self.data("tm_rndid") + "_" + tagId).hide(300,'swing', function(){
+                    //$("." + $self.data("tm_rndid") + "_" + tagId).remove();
+                        tagBeingRemoved = tlis[idx];
+                        $self.trigger('tm:splicing', tagBeingRemoved);
+                        $("#" + $self.data("tm_rndid") + "_" + tagId).remove();
+                        tlis.splice(idx, 1);
+                        tlid.splice(idx, 1);
+                        privateMethods.refreshHiddenTagList.call($self);
+                        $self.trigger('tm:spliced', tagBeingRemoved);
+              
+              });
+
                 // console.log(tlis);
             }
-
             privateMethods.showOrHide.call($self);
+
+            //privateMethods.showOrHide.call($self);
             //if (tagManagerOptions.maxTags > 0 && tlis.length < tagManagerOptions.maxTags) {
             //  obj.show();
             //}
@@ -458,8 +483,6 @@
                 }
 
             });
-
-            return this;
         }
     };
 
